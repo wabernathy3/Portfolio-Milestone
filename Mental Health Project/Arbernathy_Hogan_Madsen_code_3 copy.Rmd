@@ -1,0 +1,429 @@
+---
+title: "Final Project"
+author: "Waylon Abernathy, Brian Hogan & David Madsen"
+date: "6/6/2019"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+require(dplyr)
+require(countrycode)
+require(caret)
+require(tibble)
+require(rpart)
+require(rpart.plot)
+require(ggplot2)
+#require(doMC)
+#registerDoMC(7)
+```
+
+# Functions
+```{r define functions}
+Self.Employed.Clean <- function(x) {
+  for (i in 2:length(x)) {
+    if (all(is.na(x[which(x['Are.you.self.employed.'] == 1), i]))){
+      if (is.factor(x[, i]))
+      {
+        x[, i] <- as.character(x[, i])
+        x[which(x['Are.you.self.employed.'] == 1), i] <- 'Self-Employed'
+        x[, i] <- as.factor(x[, i])
+      }
+      else if (is.integer(x[, i]) && min(x[, i], na.rm = T) == 0 && max(x[, i], na.rm = T) == 1)
+      {
+        x[which(x['Are.you.self.employed.'] == 1), i] <- 2
+        x[, i] <- factor(x[, i], levels <- c(0,1,2), labels = c('No', 'Yes', 'Self-Employed'))
+      }
+    }
+    if (all(is.na(x[which(x['Are.you.self.employed.'] == 0), i]))){
+      if(is.factor(x[, i]))
+      {
+        x[, i] <- as.character(x[, i])
+        x[which(x['Are.you.self.employed.'] == 0), i] <- 'Not Self-Employed'
+        x[, i] <- as.factor(x[, i])
+      }
+      else if (is.integer(x[, i]) && min(x[, i], na.rm = T) == 0 && max(x[, i], na.rm = T) == 1) {
+        x[which(x['Are.you.self.employed.'] == 0), i] <- 2
+        x[, i] <- factor(x[, i], levels <- c(0,1,2), labels = c('No', 'Yes', 'Not Self-Employed'))
+      }
+    }
+  }
+  
+  return(x)
+}
+
+Factor.Replace.NA <- function(x, colName, newValue) {
+  x[, colName] <- as.character(x[, colName])
+  x[which(is.na(x[, colName])), colName] <- newValue
+  x[, colName] <- as.factor(x[, colName])
+  return(x)
+}
+
+Scrub.Gender <- function(x) {
+  female <- c('f', 'female', ' female', 'cis feamle', 'cis-woman', 'cisgender female', 'fem', 'female ',
+              'female (props for making this a freeform field, though)', 'female assigned at birth ',
+              'female or multi-gender femme', 'female-bodied; no feelings about gender', 'female/woman', 'fm', 'woman')
+  male <- c('cis male', 'cis man', 'cisdude', 'dude',
+            "i'm a man why didn't you make this a drop down question. you should of asked sex? and i would of answered yes please. seriously how much text can this take? ",
+            'm', 'ml', 'mail', 'male', 'male (cis)', 'male.', 'malr', 'man', 'sex is male')
+  genders <- tolower(as.character(x[, 'What.is.your.gender.']))
+  genders[which(genders %in% female)] <- 'female'
+  genders[which(genders %in% male)] <- 'male'
+  genders[-which(genders %in% c('female', 'male'))] <- 'Other/No Response'
+  x[, 'What.is.your.gender.'] <- as.factor(genders)
+  return(x)
+}
+```
+
+# Loading the data
+```{r load the data}
+mentalHealth <- read.csv('mental-heath-in-tech-2016_20161114.csv', na.strings = c("", "NA", " "))
+```
+
+
+# Cleaning
+```{r convert some columns}
+mentalHealth <- Self.Employed.Clean(mentalHealth)
+
+mentalHealth$Is.your.primary.role.within.your.company.related.to.tech.IT. <- as.character(mentalHealth$Is.your.primary.role.within.your.company.related.to.tech.IT.)
+mentalHealth[which(mentalHealth$Is.your.employer.primarily.a.tech.company.organization. == 'Yes'),'Is.your.primary.role.within.your.company.related.to.tech.IT.'] <- 'Tech Company'
+mentalHealth$Is.your.primary.role.within.your.company.related.to.tech.IT. <- as.factor(mentalHealth$Is.your.primary.role.within.your.company.related.to.tech.IT.)
+
+mentalHealth$If.yes..what.percentage.of.your.work.time..time.performing.primary.or.secondary.job.functions..is.affected.by.a.mental.health.issue. <- as.character(mentalHealth$If.yes..what.percentage.of.your.work.time..time.performing.primary.or.secondary.job.functions..is.affected.by.a.mental.health.issue.)
+mentalHealth[which(is.na(mentalHealth$If.yes..what.percentage.of.your.work.time..time.performing.primary.or.secondary.job.functions..is.affected.by.a.mental.health.issue.)), 'If.yes..what.percentage.of.your.work.time..time.performing.primary.or.secondary.job.functions..is.affected.by.a.mental.health.issue.'] <- 'Not Affected or Unsure'
+mentalHealth$If.yes..what.percentage.of.your.work.time..time.performing.primary.or.secondary.job.functions..is.affected.by.a.mental.health.issue. <- as.factor(mentalHealth$If.yes..what.percentage.of.your.work.time..time.performing.primary.or.secondary.job.functions..is.affected.by.a.mental.health.issue.)
+
+for (i in 26:36) {
+  mentalHealth <- Factor.Replace.NA(mentalHealth, colnames(mentalHealth)[i], 'No Previous Employer')
+}
+
+mentalHealth <- Factor.Replace.NA(mentalHealth, 'What.US.state.or.territory.do.you.live.in.', 'Does not live in US')
+mentalHealth <- Factor.Replace.NA(mentalHealth, 'What.US.state.or.territory.do.you.work.in.', 'Does not work in US')
+
+mentalHealth <- Scrub.Gender(mentalHealth)
+
+mentalHealth$Do.you.have.previous.employers. <- factor(mentalHealth$Do.you.have.previous.employers., levels = c(0,1), labels = c('No', 'Yes'))
+
+mentalHealth$Are.you.self.employed. <- factor(mentalHealth$Are.you.self.employed., levels = c(0,1), labels = c('No', 'Yes'))
+
+mentalHealth$Have.you.ever.sought.treatment.for.a.mental.health.issue.from.a.mental.health.professional. <- 
+  factor(mentalHealth$Have.you.ever.sought.treatment.for.a.mental.health.issue.from.a.mental.health.professional.,
+         levels = c(0,1), labels = c('No', 'Yes'))
+
+mentalHealth$What.is.your.age.[which((mentalHealth$What.is.your.age. < 18) | (mentalHealth$What.is.your.age. > 75))] <- median(mentalHealth$What.is.your.age.)
+```
+
+```{r drop come columns}
+# removing free form text columns with inconsistent response
+
+dropCols <- c('If.so..what.condition.s..were.you.diagnosed.with.',
+              'If.maybe..what.condition.s..do.you.believe.you.have.',
+              'If.yes..what.condition.s..have.you.been.diagnosed.with.',
+              'Have.your.observations.of.how.another.individual.who.discussed.a.mental.health.disorder.made.you.less.likely.to.reveal.a.mental.health.issue.yourself.in.your.current.workplace.',
+              'Why.or.why.not..1',
+              'Why.or.why.not.')
+
+mentalHealth <- mentalHealth[, -which(names(mentalHealth) %in% dropCols)]
+```
+
+# feature extraction
+
+```{r fearture extraction}
+mentalHealth$Which.region.do.you.live.in. <- countrycode(mentalHealth$What.country.do.you.live.in., 'country.name', 'region')
+mentalHealth$Which.region.do.you.live.in.[which(is.na(mentalHealth$Which.region.do.you.live.in.))] <- 'Unknown'
+mentalHealth$Which.region.do.you.live.in. <- as.factor(mentalHealth$Which.region.do.you.live.in.)
+
+mentalHealth$Which.continent.do.you.live.on. <- countrycode(mentalHealth$What.country.do.you.live.in., 'country.name', 'continent')
+mentalHealth$Which.continent.do.you.live.on.[which(is.na(mentalHealth$Which.continent.do.you.live.on.))] <- 'Unknown'
+mentalHealth$Which.continent.do.you.live.on. <- as.factor(mentalHealth$Which.continent.do.you.live.on.)
+
+mentalHealth$Which.region.do.you.work.in. <- countrycode(mentalHealth$What.country.do.you.work.in., 'country.name', 'region')
+mentalHealth$Which.region.do.you.work.in.[which(is.na(mentalHealth$Which.region.do.you.work.in.))] <- 'Unknown'
+mentalHealth$Which.region.do.you.work.in. <- as.factor(mentalHealth$Which.region.do.you.work.in.)
+
+mentalHealth$Which.continent.do.you.work.on. <- countrycode(mentalHealth$What.country.do.you.work.in., 'country.name', 'continent')
+mentalHealth$Which.continent.do.you.work.on.[which(is.na(mentalHealth$Which.continent.do.you.work.on.))] <- 'Unkown'
+mentalHealth$Which.continent.do.you.work.on. <- as.factor(mentalHealth$Which.continent.do.you.work.on.)
+
+mentalHealth$Live.work.same.continent. <- as.character(mentalHealth$Which.continent.do.you.live.on.) == as.character(mentalHealth$Which.continent.do.you.work.on.)
+
+mentalHealth$Live.work.same.region. <- as.character(mentalHealth$Which.region.do.you.live.in.) == as.character(mentalHealth$Which.region.do.you.work.in.)
+```
+
+# partitioning
+
+```{r create training and validation sets}
+set.seed(42)
+
+train_indexes <- createDataPartition(mentalHealth$Would.you.feel.comfortable.discussing.a.mental.health.disorder.with.your.direct.supervisor.s.. , p=0.9, list=FALSE)
+
+mh_train <- mentalHealth[train_indexes, ]
+mh_test <- mentalHealth[-train_indexes, ]
+```
+
+# Would you feel comfortable discussing with your supervior?
+
+## Feature Selection
+### random forest across the entire training set
+```{r feature selection model training}
+set.seed(42)
+
+control <- trainControl(method = "cv", number = 3, verboseIter = T)
+model <- train(Would.you.feel.comfortable.discussing.a.mental.health.disorder.with.your.direct.supervisor.s.. ~ .,
+               data = mh_train,
+               method = 'rf',
+               preProcess="scale",
+               trControl=control,
+               verbose = T)
+```
+
+### select feature with Overall importance > 20
+
+```{r look at feature importance}
+importance <- varImp(model, scale = T)
+
+impDf <- varImp(model)$importance %>% 
+  as.data.frame() %>%
+  rownames_to_column() %>%
+  arrange(Overall) %>%
+  mutate(rowname = forcats::fct_inorder(rowname )) %>%
+  arrange(desc(Overall))
+
+imps <- as.character(impDf$rowname[which(impDf$Overall > 20)])
+
+# remove the trailing value from the dummy variable name
+imps <- gsub('(\\.[^\\.]+)$', '', imps)
+
+# but that removes a bit more than we want - need to add the trailing . to factors (most of them!)
+imps[-which(endsWith(imps, '.'))] <- paste(imps[-which(endsWith(imps, '.'))], '.', sep='')
+
+if ('Would.you.have.been.willing.to.discuss.a.mental.health.issue.with.your.direct.supervisor.s.' %in% imps) {
+  imps[which(imps == 'Would.you.have.been.willing.to.discuss.a.mental.health.issue.with.your.direct.supervisor.s.')] <- 'Would.you.have.been.willing.to.discuss.a.mental.health.issue.with.your.direct.supervisor.s..'
+}
+
+if ('Has.your.employer.ever.formally.discussed.mental.health..for.example..as.part.of.a.wellness.campaign.or.other.official.communication.' %in% imps) {
+  imps[which(imps == 'Has.your.employer.ever.formally.discussed.mental.health..for.example..as.part.of.a.wellness.campaign.or.other.official.communication.')] <- 'Has.your.employer.ever.formally.discussed.mental.health..for.example..as.part.of.a.wellness.campaign.or.other.official.communication..'
+}
+
+mhTrain_Subset <- mh_train[, c('Would.you.feel.comfortable.discussing.a.mental.health.disorder.with.your.direct.supervisor.s..', imps)]
+mhTest_Subset <- mh_test[, c('Would.you.feel.comfortable.discussing.a.mental.health.disorder.with.your.direct.supervisor.s..', imps)]
+```
+
+## Decision Tree: RPart
+### Training
+
+```{r rpart on subset}
+set.seed(42)
+
+rpartControl <- rpart.control(xval = 10, cp = 0.01, minsplit = 7)
+rp_model <- rpart(Would.you.feel.comfortable.discussing.a.mental.health.disorder.with.your.direct.supervisor.s.. ~ ., data = mhTrain_Subset, method = 'class', control = rpartControl)
+```
+
+### Results
+
+```{r look at results for rpart, fig.width=10}
+print(rp_model)
+rp_predict <- predict(rp_model, mhTest_Subset, type = 'class')
+confusionMatrix(rp_predict, mhTest_Subset$Would.you.feel.comfortable.discussing.a.mental.health.disorder.with.your.direct.supervisor.s..)
+rp_imp <- varImp(rp_model, scale = F)
+rpart.plot(rp_model)
+```
+
+## Random Forest
+### Training
+
+```{r RandomForest on Subset}
+set.seed(42)
+rfControl <- trainControl(method = "repeatedcv", repeats = 10, number = 3)
+rfGrid <- expand.grid(cp = seq(0, 0.1, 0.01))
+rf_model <- train(Would.you.feel.comfortable.discussing.a.mental.health.disorder.with.your.direct.supervisor.s.. ~ ., data = mhTrain_Subset, method = 'rf', metric = 'Accuracy', trControl = rfControl, verbose = T)
+```
+
+### Results
+
+```{r look at results for supervisor, fig.width=10}
+print(rf_model)
+rf_predict <- predict(rf_model, mhTest_Subset)
+confusionMatrix(rf_predict, mhTest_Subset$Would.you.feel.comfortable.discussing.a.mental.health.disorder.with.your.direct.supervisor.s..)
+rf_imp <- varImp(rf_model, scale = F)
+plot(rf_imp)
+```
+
+## Boosted Logistic Regression
+### Training
+
+```{r logitBoost}
+set.seed(42)
+lbControl <- trainControl(method = "boot", number = 25, allowParallel = T)
+lbGrid <- expand.grid(nIter = seq(0, 10, 1))
+lb_model <- train(Would.you.feel.comfortable.discussing.a.mental.health.disorder.with.your.direct.supervisor.s.. ~ ., data = mhTrain_Subset, method = 'LogitBoost', metric = "Accuracy", trControl = lbControl, verbose = T)
+```
+
+### Results
+
+```{r look at results for logitboost, fig.width=10}
+print(lb_model)
+lb_predict <- predict(lb_model, mhTest_Subset)
+confusionMatrix(lb_predict, mhTest_Subset$Would.you.feel.comfortable.discussing.a.mental.health.disorder.with.your.direct.supervisor.s..)
+lb_imp <- varImp(lb_model, scale = F)
+plot(lb_imp)
+```
+
+## Heirarchical Clustering
+### clustering
+
+```{r hac}
+mh_clust <- mentalHealth[-which(mentalHealth$Are.you.self.employed. == 'Yes'), -c(1, 17:24)]
+
+mh_hac <- hclust(dist(mh_clust, method = 'canberra'), 'complete')
+```
+
+### Viewing
+
+```{r plot hac}
+plot(mh_hac)
+
+mh_cut <- cutree(mh_hac, 4)
+```
+
+
+### Cluster examination
+
+```{r cluster examination}
+for (i in 1:(length(mh_clust))) {
+  for (j in 1:(length(mh_clust))) {
+    if (i != j) {
+      g <- data.frame(mh_clust[, c(i, j)], mh_cut)
+      colnames(g) <- c(colnames(mh_clust)[c(i, j)], 'cluster')
+      g$cluster <- factor(g$cluster)
+      #g <- g %>% group_by(.[[1]], .[[2]], cluster) %>% count()
+      #colnames(g) <- c(colnames(mh_clust)[c(i, j)], 'cluster', 'n')
+      #print(colnames(g))
+      gg <- ggplot(data = g, aes_string(x=names(mh_clust)[i], y=names(mh_clust)[j], color='cluster')) + geom_jitter() + scale_color_brewer(type = 'qual', palette = 'Dark2')
+    }
+  }
+}
+```
+
+# Would you bring up mental illness in an interview?
+
+## Feature Selection
+### Random Forest across all features
+
+```{r random forest for new feature selection}
+set.seed(42)
+
+control <- trainControl(method = "cv", number = 3, verboseIter = T)
+model <- train(Would.you.bring.up.a.mental.health.issue.with.a.potential.employer.in.an.interview. ~ .,
+               data = mh_train,
+               method = 'rf',
+               preProcess="scale",
+               trControl=control,
+               verbose = T)
+```
+
+### Rank importance and select overal importance > 10
+
+```{r importance analysis for new feature selection}
+importance <- varImp(model, scale = T)
+
+impDf <- varImp(model)$importance %>% 
+  as.data.frame() %>%
+  rownames_to_column() %>%
+  arrange(Overall) %>%
+  mutate(rowname = forcats::fct_inorder(rowname )) %>%
+  arrange(desc(Overall))
+
+imps <- as.character(impDf$rowname[which(impDf$Overall > 10)])
+
+# remove the trailing value from the dummy variable name
+imps <- gsub('(\\.[^\\.]+)$', '', imps)
+
+# but that removes a bit more than we want - need to add the trailing . to factors (most of them!)
+imps[-which(endsWith(imps, '.'))] <- paste(imps[-which(endsWith(imps, '.'))], '.', sep='')
+
+if ('Would.you.have.been.willing.to.discuss.a.mental.health.issue.with.your.direct.supervisor.s.' %in% imps) {
+  imps[which(imps == 'Would.you.have.been.willing.to.discuss.a.mental.health.issue.with.your.direct.supervisor.s.')] <- 'Would.you.have.been.willing.to.discuss.a.mental.health.issue.with.your.direct.supervisor.s..'
+}
+
+if ('Has.your.employer.ever.formally.discussed.mental.health..for.example..as.part.of.a.wellness.campaign.or.other.official.communication.' %in% imps) {
+  imps[which(imps == 'Has.your.employer.ever.formally.discussed.mental.health..for.example..as.part.of.a.wellness.campaign.or.other.official.communication.')] <- 'Has.your.employer.ever.formally.discussed.mental.health..for.example..as.part.of.a.wellness.campaign.or.other.official.communication..'
+}
+
+if ('Would.you.feel.comfortable.discussing.a.mental.health.disorder.with.your.direct.supervisor.s.' %in% imps) {
+  imps[which(imps == 'Would.you.feel.comfortable.discussing.a.mental.health.disorder.with.your.direct.supervisor.s.')] <- 'Would.you.feel.comfortable.discussing.a.mental.health.disorder.with.your.direct.supervisor.s..'
+}
+
+mhTrain_Subset <- mh_train[, c('Would.you.bring.up.a.mental.health.issue.with.a.potential.employer.in.an.interview.', imps)]
+mhTest_Subset <- mh_test[, c('Would.you.bring.up.a.mental.health.issue.with.a.potential.employer.in.an.interview.', imps)]
+```
+
+## rpart descion trees
+### train
+
+```{r rpart on interview subset}
+set.seed(42)
+
+rpartControl <- rpart.control(xval = 10, cp = 0.01, minsplit = 20)
+rpi_model <- rpart(Would.you.bring.up.a.mental.health.issue.with.a.potential.employer.in.an.interview. ~ ., data = mhTrain_Subset, method = 'class', control = rpartControl)
+```
+
+### results
+
+```{r look at results for rpart interview, fig.width=10}
+print(rpi_model)
+rpi_predict <- predict(rpi_model, mhTest_Subset, type = 'class')
+confusionMatrix(rpi_predict, mhTest_Subset$Would.you.bring.up.a.mental.health.issue.with.a.potential.employer.in.an.interview.)
+rpi_imp <- varImp(rpi_model, scale = F)
+rpart.plot(rpi_model)
+```
+
+## Naïve Bayes
+### Training
+
+```{r naïve bayes classifer}
+nb_model <- train(Would.you.bring.up.a.mental.health.issue.with.a.potential.employer.in.an.interview. ~ ., data = mhTrain_Subset, method = 'nb', metric = 'Accuracy', trControl = trainControl(method = 'cv', number = '3', verboseIter = T), tuneGrid = expand.grid(fL = 1:3, usekernel = c(F,T), adjust = 1:3), verbose = T) 
+```
+
+### Results
+
+```{r look at results for nb interview, fig.width=10}
+print(nb_model)
+nb_predict <- predict(nb_model, mhTest_Subset)
+confusionMatrix(nb_predict, mhTest_Subset$Would.you.bring.up.a.mental.health.issue.with.a.potential.employer.in.an.interview.)
+nb_imp <- varImp(nb_model, scale = F)
+plot(nb_imp)
+```
+
+
+
+```{r do some one-hot encoding, eval=FALSE}
+# skip this for now. Not really used.
+mh_encoded <- mhTrain_Subset
+encoded <- c()
+for (i in 1:length(mh_encoded)) {
+  if (!(is.numeric(mh_encoded[, i]) | colnames(mh_encoded)[i] == 'Would.you.feel.comfortable.discussing.a.mental.health.disorder.with.your.direct.supervisor.s..')) {
+    encoded <- c(encoded, i)
+    for (unique_value in unique(mh_encoded[, i])) {
+      mh_encoded[paste(colnames(mh_encoded)[i], unique_value, sep = '.')] <- ifelse(mh_encoded[, i] == unique_value, 1, 0)
+    }
+  }
+}
+
+mh_encoded <- mh_encoded[, -encoded]
+```
+
+# Some decriptive statistics
+## Mental Illness per Region
+
+```{r mental illness per region, fig.width=7, fig.height=3}
+region.counts <- mentalHealth %>% group_by(Which.region.do.you.live.in.) %>% count()
+region.mh <- mentalHealth %>% group_by(Which.region.do.you.live.in., Do.you.currently.have.a.mental.health.disorder.) %>% count()
+colnames(region.counts)[2] <- 'Total'
+region.mh <- region.mh %>% inner_join(region.counts, by = 'Which.region.do.you.live.in.')
+region.mh$p <- region.mh$n / region.mh$Total
+
+barplot(region.mh$p, names.arg = paste(region.mh$Which.region.do.you.live.in., region.mh$Do.you.currently.have.a.mental.health.disorder., sep = '\n'), col = c('skyblue', 'goldenrod1', 'plum1'), las=2)
+```
+
+

@@ -1,0 +1,153 @@
+---
+title: "Project"
+author: "Waylon Abernathy"
+date: '`r Sys.time()`'
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+
+```{r setup}
+library(ggplot2)
+library(reshape2)
+library(readxl)
+```
+
+###Cleaning the Data
+```{r}
+
+
+NBA500_new_ranking_system <- read_excel("~/Documents/Syracuse/Term 2/Intro to Data Science/Project/NBA500 new ranking system.xlsx")
+
+NBA500 <- NBA500_new_ranking_system
+#Converting to new dataframe
+NBA <- NBA500
+
+
+NBA500[is.na(NBA500)] <- 0
+
+#Changing MVP column name
+names(NBA)[3] <- paste("mvp.rank")
+
+#Reordering for MVP
+NBA <- NBA[order(NBA$mvp.rank),]
+
+#Creating seperate MVP DF
+MVP <- data.frame(NBA[1:13,])
+names(MVP)[3] <- paste("mvp.rank")
+#Removing MVPs from original DF
+NBA <- NBA[-1:-13,]
+#Removing mvp.rank col from NBA DF
+NBA <- NBA[,-3]
+
+#Changing colnames for MVP
+colnames(MVP) <- c("Player","Rk","MVP", "Pos",	"Position.number",	"Age",	"Team",	"G",	"GS",	"MP",	"FG",	"FGA",	"FG.",	"3P",	"3PA",	"3P.",	"2P",	"2PA",	"2P.",	"FT",	"FTA",	"FT.",	"ORB",	"DRB",	"TRB",	"AST",	"STL",	"BLK",	"TOV",	"PF",	"PTS",	"ORtg",	"DRtg")
+#Changing colnames for NBA
+colnames(NBA) <- c("Player","Rk","Pos",	"Position.number",	"Age",	"Team",	"G",	"GS",	"MP",	"FG",	"FGA",	"FG.",	"3P",	"3PA",	"3P.",	"2P",	"2PA",	"2P.",	"FT",	"FTA",	"FT.",	"ORB",	"DRB",	"TRB",	"AST",	"STL",	"BLK",	"TOV",	"PF",	"PTS",	"ORtg",	"DRtg")
+#Changing colnames for NBA500
+colnames(NBA500) <- c("Player","Rk","MVP", "Pos",	"Position.number",	"Age",	"Team",	"G",	"GS",	"MP",	"FG",	"FGA",	"FG.",	"3P",	"3PA",	"3P.",	"2P",	"2PA",	"2P.",	"FT",	"FTA",	"FT.",	"ORB",	"DRB",	"TRB",	"AST",	"STL",	"BLK",	"TOV",	"PF",	"PTS",	"ORtg",	"DRtg")
+
+#NBA avg FG%
+mean(NBA$FG.)
+#MVP avg FG%
+mean(MVP$FG.)
+
+#NBA avg FG
+mean(NBA$FG)
+#MVP avg FG
+mean(MVP$FG)
+
+#MVP avg games-started
+mean(MVP$GS)
+#NBA avg games-started
+mean(NBA$GS)
+```
+
+```{r}
+#Visuals
+
+##Question 1
+#Minutes Played plot
+ggplot(NBA500, aes(x=Player, y=MP, group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+#Minutes Played MVP
+ggplot(MVP, aes(x=Player, y=MP, group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + geom_text(aes(label=Player),hjust=0.60, vjust=-1) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+
+#Games Started
+ggplot(NBA500, aes(x=Player, y=GS, group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+#Games Started MVP
+ggplot(MVP, aes(x=Player, y=GS, group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + geom_text(aes(label=Player),hjust=0.60, vjust=-1) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+
+#Field Goals 
+ggplot(NBA500, aes(x=Player, y=FG, group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+#Field Goals MVP
+ggplot(MVP, aes(x=Player, y=FG, group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + geom_text(aes(label=Player),hjust=0.60, vjust=-1) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+
+#Free Throws Attempted
+ggplot(NBA500, aes(x=Player, y=FTA, group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+#Free Throws Attempted MVP
+ggplot(MVP, aes(x=Player, y=FTA, group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + geom_text(aes(label=Player),hjust=0.60, vjust=-1) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+
+#Points Scored
+ggplot(NBA500, aes(x=Player, y=PTS, group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+#Points Scored MVP
+ggplot(MVP, aes(x=Player, y=PTS, group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + geom_text(aes(label=Player),hjust=0.60, vjust=-1) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+```
+
+
+
+```{r}
+##Question 2
+#ORtg in plot
+plot(NBA500$MVP ~ NBA500$ORtg)
+#DRtg in plot
+plot(NBA500$MVP ~ NBA500$DRtg)
+
+plot(MVP$ORtg ~ MVP$MVP)
+plot(MVP$ORtg ~ MVP$MVP)
+```
+
+```{r}
+#Question 3
+
+pbar <- ggplot(data = MVP) + 
+  geom_bar(mapping = aes(x = Pos, fill = Pos), width = 1) + 
+  theme(aspect.ratio = 1) +
+  labs(x= NULL, y = NULL, title = "Proportion of MVP Eligibility by Position")
+#Bar chart to show Positions within MVP status
+pbar + coord_flip()
+#Pie chart to show Positions within MVP status
+pbar + coord_polar()
+
+#Pie chart to show distribution of position based on off number of votes
+MVP.Pie <- ggplot(MVP, aes(x= "", y = MVP, fill= Pos)) + 
+  geom_bar(mapping = aes(x = Pos, fill = Pos), stat = "identity", width = 1) + 
+  theme(aspect.ratio = 1, axis.ticks = element_blank()) +
+  labs(x=NULL, y = NULL, title = "Proportion of MVP Position by Vote Totals") +
+  coord_polar() 
+MVP.Pie
+# This pie chart shows that although SG and PF both had the same number of players
+#within the MVP runnings, PF had more top ranked votes.  Therefore it was more beneficial to play the PF position
+```
+
+```{r}
+#Question 4
+
+#Field Goal Percentages
+ggplot(NBA500, aes(x=Player, y=FG., group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+#Field Goal Attempts
+ggplot(NBA500, aes(x=Player, y=FGA, group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+
+#Three Point Percentages
+ggplot(NBA500, aes(x=Player, y=`3P.`, group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+#Three Point Attempts
+ggplot(NBA500, aes(x=Player, y=`3PA`, group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+
+#Free Throw Percentages
+ggplot(NBA500, aes(x=Player, y=`FT.`, group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+#Free Throw Attempts
+ggplot(NBA500, aes(x=Player, y=FTA, group=MVP)) + geom_point(aes(color=MVP, size=MVP)) + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+```
+
+
